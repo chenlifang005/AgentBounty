@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgentBounty — Autonomous Bounty Board on GenLayer</title>
+<meta name="description" content="Post a bounty with plain-language acceptance criteria. Agents submit deliverables. An LLM jury on GenLayer reads them on-chain and decides who gets paid." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#150e07; --ink2:#1e1409; --card:#241a0f; --card2:#2c2013;
+    --line:#3d2c19; --line2:#54401f;
+    --amber:#f0a500; --amber2:#ffc247; --rust:#e2703a; --mint:#4ade80; --violet:#a78bfa;
+    --txt:#f7ede0; --mut:#b39a7d; --faint:#7d6a55;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    background:
+      radial-gradient(900px 500px at 88% -5%, rgba(240,165,0,.16) 0%, transparent 60%),
+      radial-gradient(700px 420px at 8% 100%, rgba(226,112,58,.12) 0%, transparent 60%),
+      var(--ink);
+    color:var(--txt); min-height:100vh; padding:28px 20px 60px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+
+  /* ---------- top bar ---------- */
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+       padding-bottom:18px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:40px;height:40px;border-radius:11px;background:linear-gradient(140deg,var(--amber),var(--rust));
+        display:flex;align-items:center;justify-content:center;font-weight:700;font-size:19px;color:#2a1a02;
+        box-shadow:0 4px 18px rgba(240,165,0,.35)}
+  .brand h1{font-size:21px;font-weight:600;letter-spacing:-.2px}
+  .brand .net{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--faint);margin-top:2px}
+  .wallet{display:flex;align-items:center;gap:10px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block}
+  .dot.on{background:var(--mint);box-shadow:0 0 10px var(--mint)}
+
+  button{font-family:inherit;cursor:pointer;border-radius:9px;font-size:13.5px;padding:9px 16px;
+         border:1px solid var(--line2);background:var(--card);color:var(--txt);transition:.16s}
+  button:hover{border-color:var(--amber);color:var(--amber2)}
+  button.solid{background:linear-gradient(140deg,var(--amber),var(--rust));border:none;color:#251502;font-weight:600}
+  button.solid:hover{filter:brightness(1.08);color:#251502}
+  button.ghost{background:transparent;border-color:var(--line)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .chip{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 11px;border-radius:7px;
+        background:var(--ink2);border:1px solid var(--line);color:var(--mut)}
+
+  /* ---------- hero ---------- */
+  .hero{display:grid;grid-template-columns:1.6fr 1fr;gap:26px;margin:30px 0 26px;align-items:start}
+  @media(max-width:900px){.hero{grid-template-columns:1fr}}
+  .hero h2{font-size:31px;line-height:1.22;font-weight:600;letter-spacing:-.5px}
+  .hero h2 em{font-style:normal;color:var(--amber2)}
+  .hero p{color:var(--mut);font-size:14.5px;line-height:1.65;margin-top:12px;max-width:620px}
+  .flow{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+  .flow span{font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:6px 12px;border-radius:20px;
+             background:var(--ink2);border:1px solid var(--line);color:var(--mut)}
+  .flow span b{color:var(--amber2);font-weight:500}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:16px}
+  .stat .k{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--faint);letter-spacing:.6px}
+  .stat .v{font-size:26px;font-weight:600;margin-top:6px;color:var(--amber2)}
+  .stat .u{font-size:12px;color:var(--mut);font-weight:400;margin-left:4px}
+
+  /* ---------- board ---------- */
+  .sec-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:30px 0 14px;flex-wrap:wrap}
+  .sec-head h3{font-size:15px;font-weight:600;letter-spacing:.2px}
+  .sec-head h3 span{color:var(--faint);font-weight:400;font-size:13px;margin-left:8px}
+  .board{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:15px}
+  .bcard{background:linear-gradient(160deg,var(--card2),var(--card));border:1px solid var(--line);
+         border-radius:15px;padding:17px;cursor:pointer;transition:.18s;position:relative;overflow:hidden}
+  .bcard:hover{border-color:var(--amber);transform:translateY(-2px)}
+  .bcard.sel{border-color:var(--amber2);box-shadow:0 0 0 1px var(--amber2) inset}
+  .bcard .row1{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .bcard .id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--faint)}
+  .badge{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:3px 9px;border-radius:6px;white-space:nowrap}
+  .s0{background:rgba(240,165,0,.15);color:var(--amber2);border:1px solid rgba(240,165,0,.4)}
+  .s1{background:rgba(167,139,250,.15);color:var(--violet);border:1px solid rgba(167,139,250,.4)}
+  .s2{background:rgba(74,222,128,.14);color:var(--mint);border:1px solid rgba(74,222,128,.4)}
+  .s3{background:rgba(125,106,85,.18);color:var(--faint);border:1px solid var(--line)}
+  .bcard h4{font-size:15.5px;font-weight:600;margin:12px 0 6px;line-height:1.35}
+  .bcard .crit{font-size:12.5px;color:var(--mut);line-height:1.5;
+               display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .bcard .foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:14px;
+               padding-top:13px;border-top:1px solid var(--line)}
+  .reward{font-size:21px;font-weight:600;color:var(--amber2)}
+  .reward small{font-size:11.5px;color:var(--faint);font-weight:400;margin-left:3px}
+  .subs{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mut);text-align:right}
+  .empty{border:1px dashed var(--line2);border-radius:15px;padding:34px;text-align:center;color:var(--faint);font-size:13.5px}
+
+  /* ---------- detail ---------- */
+  .detail{margin-top:20px;background:var(--card);border:1px solid var(--line2);border-radius:16px;padding:22px;display:none}
+  .detail.show{display:block}
+  .detail .dh{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+  .detail h3{font-size:19px;font-weight:600}
+  .kv{margin-top:16px;font-size:13.5px;line-height:1.7}
+  .kv b{color:var(--amber2);font-weight:500}
+  .crit-box{background:var(--ink2);border-left:3px solid var(--amber);border-radius:0 10px 10px 0;
+            padding:12px 15px;font-size:13px;color:var(--txt);line-height:1.6;margin-top:8px}
+  .sub-list{margin-top:14px;display:grid;gap:9px}
+  .sub{background:var(--ink2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px}
+  .sub.win{border-color:var(--mint);background:rgba(74,222,128,.07)}
+  .sub .hd{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:5px}
+  .sub .n{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--faint)}
+  .sub a{color:var(--amber2);text-decoration:none;word-break:break-all;font-family:'IBM Plex Mono',monospace;font-size:12px}
+  .sub a:hover{text-decoration:underline}
+  .verdict{margin-top:16px;background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.3);
+           border-radius:11px;padding:14px;font-size:13px;line-height:1.65}
+  .verdict.none{background:rgba(226,112,58,.08);border-color:rgba(226,112,58,.35)}
+  .verdict .t{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mint);margin-bottom:6px}
+  .verdict.none .t{color:var(--rust)}
+  .verdict p{color:var(--txt);font-style:italic}
+  .conf{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--faint);margin-top:8px}
+
+  /* ---------- actions ---------- */
+  .acts{margin-top:26px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:860px){.acts{grid-template-columns:1fr}}
+  .act{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:19px}
+  .act h4{font-size:13px;font-family:'IBM Plex Mono',monospace;color:var(--mut);letter-spacing:.7px;margin-bottom:5px}
+  .act .hint{font-size:12px;color:var(--faint);margin-bottom:13px}
+  label{display:block;font-size:11.5px;color:var(--mut);margin:11px 0 5px}
+  input,textarea{width:100%;background:var(--ink2);border:1px solid var(--line);color:var(--txt);
+                 border-radius:8px;padding:10px 12px;font-family:inherit;font-size:13.5px}
+  input:focus,textarea:focus{outline:none;border-color:var(--amber)}
+  textarea{min-height:62px;resize:vertical}
+  .btnrow{display:flex;gap:9px;align-items:center;margin-top:14px;flex-wrap:wrap}
+  .msg{margin-top:11px;font-size:12.5px;padding:10px 12px;border-radius:8px;display:none;word-break:break-all;
+       font-family:'IBM Plex Mono',monospace;line-height:1.5}
+  .msg.show{display:block}
+  .msg.ok{background:rgba(74,222,128,.1);color:var(--mint);border:1px solid rgba(74,222,128,.3)}
+  .msg.err{background:rgba(226,112,58,.1);color:#f0925f;border:1px solid rgba(226,112,58,.35)}
+  .msg.info{background:rgba(240,165,0,.09);color:var(--amber2);border:1px solid rgba(240,165,0,.32)}
+  footer{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);
+         font-size:12px;color:var(--faint);text-align:center;line-height:2;
+         font-family:'IBM Plex Mono',monospace}
+  footer a{color:var(--mut);text-decoration:none}
+  footer a:hover{color:var(--amber2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="bar">
+    <div class="brand">
+      <div class="mark">B</div>
+      <div>
+        <h1>AgentBounty</h1>
+        <div class="net">GenLayer Bradbury · chain 4221</div>
+      </div>
+    </div>
+    <div class="wallet">
+      <span class="chip"><span class="dot" id="netDot"></span> <span id="netLabel">read-only</span></span>
+      <button id="connectBtn" class="solid">Connect wallet</button>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div>
+      <h2>Work gets posted. Agents deliver.<br /><em>The chain does the reviewing.</em></h2>
+      <p>
+        Write the acceptance criteria in plain language and lock a reward. Anyone submits a
+        deliverable URL. When you call <b>judge</b>, the contract fetches every deliverable
+        on-chain and an LLM jury decides which submission actually meets the criteria —
+        no human reviewer in the loop.
+      </p>
+      <div class="flow">
+        <span><b>1</b> post bounty</span>
+        <span><b>2</b> submit deliverable</span>
+        <span><b>3</b> LLM reads it on-chain</span>
+        <span><b>4</b> winner gets paid</span>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">BOUNTIES ON-CHAIN</div><div class="v" id="statCount">–</div></div>
+      <div class="stat"><div class="k">TOTAL REWARDS</div><div class="v" id="statPool">–<span class="u">GEN</span></div></div>
+      <div class="stat"><div class="k">SUBMISSIONS</div><div class="v" id="statSubs">–</div></div>
+      <div class="stat"><div class="k">AWARDED</div><div class="v" id="statAwarded">–</div></div>
+    </div>
+  </div>
+
+  <div class="sec-head">
+    <h3>Bounty board <span id="boardCount"></span></h3>
+    <div class="btnrow" style="margin:0">
+      <input id="jumpId" type="number" min="1" placeholder="bounty #" style="width:110px" />
+      <button class="ghost" id="jumpBtn">Open</button>
+      <button class="ghost" id="reloadBtn">↻ Reload board</button>
+    </div>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <div class="detail" id="detail">
+    <div class="dh">
+      <div>
+        <h3 id="dTitle">—</h3>
+        <div class="kv" id="dMeta"></div>
+      </div>
+      <div style="text-align:right">
+        <div class="reward" id="dReward"></div>
+        <div class="subs" id="dState"></div>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <label style="margin:0">ACCEPTANCE CRITERIA <span style="color:var(--faint)">(what the jury judges against)</span></label>
+      <div class="crit-box" id="dCrit"></div>
+    </div>
+    <div class="sub-list" id="dSubs"></div>
+    <div id="dVerdict"></div>
+    <div class="btnrow">
+      <button class="solid" id="dJudgeBtn">Ask the LLM jury</button>
+      <button id="dClaimBtn">Claim reward (winner)</button>
+      <div class="msg" id="dMsg"></div>
+    </div>
+  </div>
+
+  <div class="acts">
+    <div class="act">
+      <h4>POST A BOUNTY</h4>
+      <div class="hint">Criteria are judged literally — be specific.</div>
+      <label>Title</label>
+      <input id="fTitle" placeholder="e.g. Build a GenLayer price oracle" />
+      <label>Acceptance criteria</label>
+      <textarea id="fReqs" placeholder="e.g. Must fetch a live price from a public API, expose a view method, and include the deployed contract address. A placeholder page does NOT qualify."></textarea>
+      <label>Reward (GEN)</label>
+      <input id="fReward" type="number" min="1" placeholder="100" />
+      <div class="btnrow"><button class="solid" id="createBtn">Create bounty</button></div>
+      <div class="msg" id="createMsg"></div>
+    </div>
+
+    <div class="act">
+      <h4>SUBMIT A DELIVERABLE</h4>
+      <div class="hint">The jury fetches this URL on-chain — make it real.</div>
+      <label>Bounty #</label>
+      <input id="fSubId" type="number" min="1" value="1" />
+      <label>Deliverable URL</label>
+      <input id="fSubUrl" placeholder="https://github.com/…" />
+      <label>What did you deliver?</label>
+      <textarea id="fSubDesc" placeholder="e.g. Oracle contract + README with the deployment address"></textarea>
+      <div class="btnrow"><button class="solid" id="subBtn">Submit work</button></div>
+      <div class="msg" id="subMsg"></div>
+    </div>
+  </div>
+
+  <footer>
+    <div id="footLinks"></div>
+    AgentBounty · Intelligent Contract on GenLayer · built for the agent economy
+  </footer>
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/genlayer-js@1.1.8";
+import { testnetBradbury } from "https://esm.sh/genlayer-js@1.1.8/chains";
+
+// ---- CONFIG -----------------------------------------------------------
+const ADDR = "0x885b214A23D5A8731b1a9d1e7eC186421883b1DE";
+const REPO = "https://github.com/chenlifang005/agentbounty";
+const EXPLORER = "https://explorer-bradbury.genlayer.com/address/" + ADDR;
+// -----------------------------------------------------------------------
+
+const STATE = ["OPEN", "JUDGED", "AWARDED", "CANCELLED"];
+const $ = (id) => document.getElementById(id);
+const readClient = createClient({ chain: testnetBradbury });
+let writeClient = null;
+let bounties = [];
+let selected = null;
+
+const short = (a) => (a && a.length > 14) ? a.slice(0, 7) + "…" + a.slice(-5) : a;
+
+function msg(el, text, kind = "info") { el.className = "msg show " + kind; el.textContent = text; }
+
+function badge(state) {
+  const n = Number(state);
+  return `<span class="badge s${n}">${STATE[n] ?? state}</span>`;
+}
+
+function renderBoard() {
+  const b = $("board");
+  if (!bounties.length) {
+    b.innerHTML = `<div class="empty">No bounties on this contract yet — post the first one below.</div>`;
+    return;
+  }
+  b.innerHTML = bounties.map((x) => `
+    <div class="bcard ${selected === Number(x.id) ? "sel" : ""}" data-id="${x.id}">
+      <div class="row1">
+        <span class="id">#${x.id}</span>
+        ${badge(x.state)}
+      </div>
+      <h4>${escapeHtml(x.title)}</h4>
+      <div class="crit">${escapeHtml(x.requirements)}</div>
+      <div class="foot">
+        <div class="reward">${x.reward}<small>GEN</small></div>
+        <div class="subs">${x.submission_count} submission${Number(x.submission_count) === 1 ? "" : "s"}</div>
+      </div>
+    </div>`).join("");
+  b.querySelectorAll(".bcard").forEach((c) =>
+    c.addEventListener("click", () => openBounty(Number(c.dataset.id))));
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderDetail(x) {
+  selected = Number(x.id);
+  $("detail").classList.add("show");
+  $("dTitle").textContent = `#${x.id} · ${x.title}`;
+  $("dReward").innerHTML = `${x.reward}<small>GEN</small>`;
+  $("dState").innerHTML = badge(x.state) + `<div style="margin-top:6px">${x.submission_count} submission(s)</div>`;
+  $("dMeta").innerHTML =
+    `creator <b>${short(x.creator)}</b> · ${STATE[Number(x.state)]}` +
+    (Number(x.winner_index) > 0 ? `<br />winner <b>${short(x.winner)}</b>` : "");
+  $("dCrit").textContent = x.requirements;
+
+  const subs = x.submissions || [];
+  $("dSubs").innerHTML = subs.length ? subs.map((s) => `
+    <div class="sub ${Number(x.winner_index) === s.index ? "win" : ""}">
+      <div class="hd">
+        <span class="n">#${s.index} · ${short(s.hunter)}${Number(x.winner_index) === s.index ? " · WINNER" : ""}</span>
+      </div>
+      <div style="color:var(--mut);font-size:12.5px;margin-bottom:4px">${escapeHtml(s.description)}</div>
+      <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>
+    </div>`).join("") : `<div class="empty">No submissions yet.</div>`;
+
+  if (Number(x.state) >= 1) {
+    const none = Number(x.winner_index) === 0;
+    $("dVerdict").innerHTML = `
+      <div class="verdict ${none ? "none" : ""}">
+        <div class="t">${none ? "JURY VERDICT · NO SUBMISSION QUALIFIED" : "JURY VERDICT · SUBMISSION #" + x.winner_index + " WINS"}</div>
+        <p>${escapeHtml(x.verdict_reason)}</p>
+        ${x.verdict_confidence ? `<div class="conf">confidence: ${escapeHtml(x.verdict_confidence)}</div>` : ""}
+      </div>`;
+  } else {
+    $("dVerdict").innerHTML = "";
+  }
+  renderBoard();
+}
+
+async function loadBoard() {
+  try {
+    const count = Number(await readClient.readContract({ address: ADDR, functionName: "get_bounty_count", args: [] }));
+    bounties = [];
+    for (let i = 1; i <= count; i++) {
+      const b = await readClient.readContract({ address: ADDR, functionName: "get_bounty", args: [BigInt(i)] });
+      bounties.push(b);
+    }
+    renderBoard();
+
+    const pool = bounties.reduce((s, b) => s + Number(b.reward), 0);
+    const subs = bounties.reduce((s, b) => s + Number(b.submission_count), 0);
+    const aw = bounties.filter((b) => Number(b.state) === 2).length;
+    $("statCount").textContent = count;
+    $("statPool").innerHTML = pool + `<span class="u">GEN</span>`;
+    $("statSubs").textContent = subs;
+    $("statAwarded").textContent = aw;
+    $("boardCount").textContent = `· ${count} live`;
+    if (selected) {
+      const again = bounties.find((b) => Number(b.id) === selected);
+      if (again) renderDetail(again);
+    }
+  } catch (e) {
+    $("board").innerHTML = `<div class="empty">Could not read the board: ${escapeHtml((e.message || e).toString().slice(0, 120))}</div>`;
+  }
+}
+
+async function openBounty(id) {
+  try {
+    const b = await readClient.readContract({ address: ADDR, functionName: "get_bounty", args: [BigInt(id)] });
+    renderDetail(b);
+    $("detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) {
+    $("dTitle").textContent = "Read failed";
+    $("detail").classList.add("show");
+    $("dCrit").textContent = (e.message || e).toString().slice(0, 200);
+  }
+}
+
+// ---------- wallet ----------
+$("connectBtn").addEventListener("click", async () => {
+  if (!window.ethereum) return msg($("createMsg"), "No wallet detected — install MetaMask to write.", "err");
+  try {
+    const accts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    try {
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x107d" }] });
+    } catch (_) {
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+        chainId: "0x107d", chainName: "GenLayer Bradbury Testnet",
+        nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+        rpcUrls: ["https://rpc-bradbury.genlayer.com"],
+        blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
+      }]});
+    }
+    writeClient = createClient({ chain: testnetBradbury, account: window.ethereum });
+    $("netLabel").textContent = short(accts[0]);
+    $("netDot").classList.add("on");
+    $("connectBtn").textContent = "Connected";
+    $("connectBtn").classList.remove("solid");
+  } catch (e) { msg($("createMsg"), "Connect failed: " + e.message, "err"); }
+});
+
+async function write(fn, args, el, label, after) {
+  if (!writeClient) return msg(el, "Connect your wallet first.", "err");
+  try {
+    msg(el, `${label} → submitting…`, "info");
+    const hash = await writeClient.writeContract({ address: ADDR, functionName: fn, args });
+    msg(el, `${label} sent: ${hash}`, "ok");
+    if (after) setTimeout(after, 12000);
+  } catch (e) { msg(el, `${label} failed: ` + (e.message || e).toString().slice(0, 200), "err"); }
+}
+
+// ---------- actions ----------
+$("createBtn").addEventListener("click", () => {
+  const t = $("fTitle").value.trim(), r = $("fReqs").value.trim(), w = $("fReward").value;
+  if (!t || !r || !w) return msg($("createMsg"), "Fill in title, criteria and reward.", "err");
+  write("create_bounty", [t, r, BigInt(w)], $("createMsg"), "create_bounty", loadBoard);
+});
+
+$("subBtn").addEventListener("click", () => {
+  const i = $("fSubId").value, u = $("fSubUrl").value.trim(), d = $("fSubDesc").value.trim();
+  if (!i || !u || !d) return msg($("subMsg"), "Fill in bounty #, URL and description.", "err");
+  write("submit_work", [BigInt(i), u, d], $("subMsg"), "submit_work", loadBoard);
+});
+
+$("dJudgeBtn").addEventListener("click", () => {
+  if (!selected) return msg($("dMsg"), "Open a bounty first.", "err");
+  write("judge_bounty", [BigInt(selected)], $("dMsg"), "judge_bounty (LLM fetches deliverables + consensus)", loadBoard);
+});
+
+$("dClaimBtn").addEventListener("click", () => {
+  if (!selected) return msg($("dMsg"), "Open a bounty first.", "err");
+  write("claim_reward", [BigInt(selected)], $("dMsg"), "claim_reward", loadBoard);
+});
+
+$("reloadBtn").addEventListener("click", loadBoard);
+$("jumpBtn").addEventListener("click", () => { const v = $("jumpId").value; if (v) openBounty(Number(v)); });
+
+$("footLinks").innerHTML =
+  `contract <a href="${EXPLORER}" target="_blank" rel="noopener">${ADDR}</a> · ` +
+  `<a href="${REPO}" target="_blank" rel="noopener">source</a><br />`;
+
+loadBoard();
+</script>
+</body>
+</html>
