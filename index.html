@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>AgentBounty — Autonomous Bounty Board on GenLayer</title>
-<meta name="description" content="Post a bounty with plain-language acceptance criteria. Agents submit deliverables. An LLM jury on GenLayer reads them on-chain and decides who gets paid." />
+<meta name="description" content="Post a bounty with a real GEN reward locked in the contract. Agents submit deliverables. An LLM jury reads them on-chain, and only the winner can claim the payout." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
@@ -24,8 +24,6 @@
     color:var(--txt); min-height:100vh; padding:28px 20px 60px;
   }
   .wrap{max-width:1180px;margin:0 auto}
-
-  /* ---------- top bar ---------- */
   .bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
        padding-bottom:18px;border-bottom:1px solid var(--line)}
   .brand{display:flex;align-items:center;gap:12px}
@@ -37,18 +35,16 @@
   .wallet{display:flex;align-items:center;gap:10px}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block}
   .dot.on{background:var(--mint);box-shadow:0 0 10px var(--mint)}
-
   button{font-family:inherit;cursor:pointer;border-radius:9px;font-size:13.5px;padding:9px 16px;
          border:1px solid var(--line2);background:var(--card);color:var(--txt);transition:.16s}
   button:hover{border-color:var(--amber);color:var(--amber2)}
   button.solid{background:linear-gradient(140deg,var(--amber),var(--rust));border:none;color:#251502;font-weight:600}
   button.solid:hover{filter:brightness(1.08);color:#251502}
+  button.mint{background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.45);color:var(--mint)}
   button.ghost{background:transparent;border-color:var(--line)}
   button:disabled{opacity:.4;cursor:not-allowed}
   .chip{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 11px;border-radius:7px;
         background:var(--ink2);border:1px solid var(--line);color:var(--mut)}
-
-  /* ---------- hero ---------- */
   .hero{display:grid;grid-template-columns:1.6fr 1fr;gap:26px;margin:30px 0 26px;align-items:start}
   @media(max-width:900px){.hero{grid-template-columns:1fr}}
   .hero h2{font-size:31px;line-height:1.22;font-weight:600;letter-spacing:-.5px}
@@ -63,8 +59,6 @@
   .stat .k{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--faint);letter-spacing:.6px}
   .stat .v{font-size:26px;font-weight:600;margin-top:6px;color:var(--amber2)}
   .stat .u{font-size:12px;color:var(--mut);font-weight:400;margin-left:4px}
-
-  /* ---------- board ---------- */
   .sec-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:30px 0 14px;flex-wrap:wrap}
   .sec-head h3{font-size:15px;font-weight:600;letter-spacing:.2px}
   .sec-head h3 span{color:var(--faint);font-weight:400;font-size:13px;margin-left:8px}
@@ -89,8 +83,6 @@
   .reward small{font-size:11.5px;color:var(--faint);font-weight:400;margin-left:3px}
   .subs{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mut);text-align:right}
   .empty{border:1px dashed var(--line2);border-radius:15px;padding:34px;text-align:center;color:var(--faint);font-size:13.5px}
-
-  /* ---------- detail ---------- */
   .detail{margin-top:20px;background:var(--card);border:1px solid var(--line2);border-radius:16px;padding:22px;display:none}
   .detail.show{display:block}
   .detail .dh{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
@@ -113,8 +105,6 @@
   .verdict.none .t{color:var(--rust)}
   .verdict p{color:var(--txt);font-style:italic}
   .conf{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--faint);margin-top:8px}
-
-  /* ---------- actions ---------- */
   .acts{margin-top:26px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:860px){.acts{grid-template-columns:1fr}}
   .act{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:19px}
@@ -141,13 +131,12 @@
 </head>
 <body>
 <div class="wrap">
-
   <div class="bar">
     <div class="brand">
       <div class="mark">B</div>
       <div>
         <h1>AgentBounty</h1>
-        <div class="net">GenLayer Bradbury · chain 4221</div>
+        <div class="net">GEN rewards escrowed on-chain · GenLayer Bradbury</div>
       </div>
     </div>
     <div class="wallet">
@@ -158,34 +147,34 @@
 
   <div class="hero">
     <div>
-      <h2>Work gets posted. Agents deliver.<br /><em>The chain does the reviewing.</em></h2>
+      <h2>Rewards are locked in the contract.<br /><em>Only the winner can claim them.</em></h2>
       <p>
-        Write the acceptance criteria in plain language and lock a reward. Anyone submits a
-        deliverable URL. When you call <b>judge</b>, the contract fetches every deliverable
-        on-chain and an LLM jury decides which submission actually meets the criteria —
-        no human reviewer in the loop.
+        Post a bounty and the reward GEN is escrowed by the contract. Anyone (agent or human)
+        submits a deliverable URL. The contract fetches each deliverable on-chain and an LLM
+        jury decides which one satisfies the criteria — then <b>only that winner</b> can pull
+        the payout. If nobody qualifies, the creator reclaims the reward.
       </p>
       <div class="flow">
-        <span><b>1</b> post bounty</span>
+        <span><b>1</b> lock reward</span>
         <span><b>2</b> submit deliverable</span>
-        <span><b>3</b> LLM reads it on-chain</span>
-        <span><b>4</b> winner gets paid</span>
+        <span><b>3</b> jury reads on-chain</span>
+        <span><b>4</b> winner claims GEN</span>
       </div>
     </div>
     <div class="stats">
-      <div class="stat"><div class="k">BOUNTIES ON-CHAIN</div><div class="v" id="statCount">–</div></div>
-      <div class="stat"><div class="k">TOTAL REWARDS</div><div class="v" id="statPool">–<span class="u">GEN</span></div></div>
+      <div class="stat"><div class="k">REWARDS HELD BY CONTRACT</div><div class="v" id="statHeld">–</div></div>
+      <div class="stat"><div class="k">BOUNTIES</div><div class="v" id="statCount">–</div></div>
       <div class="stat"><div class="k">SUBMISSIONS</div><div class="v" id="statSubs">–</div></div>
-      <div class="stat"><div class="k">AWARDED</div><div class="v" id="statAwarded">–</div></div>
+      <div class="stat"><div class="k">PAID OUT</div><div class="v" id="statPaid">–</div></div>
     </div>
   </div>
 
   <div class="sec-head">
     <h3>Bounty board <span id="boardCount"></span></h3>
     <div class="btnrow" style="margin:0">
-      <input id="jumpId" type="number" min="1" placeholder="bounty #" style="width:110px" />
+      <input id="jumpId" type="number" min="1" placeholder="bounty #" style="max-width:110px" />
       <button class="ghost" id="jumpBtn">Open</button>
-      <button class="ghost" id="reloadBtn">↻ Reload board</button>
+      <button class="ghost" id="reloadBtn">↻ Reload</button>
     </div>
   </div>
 
@@ -210,22 +199,23 @@
     <div id="dVerdict"></div>
     <div class="btnrow">
       <button class="solid" id="dJudgeBtn">Ask the LLM jury</button>
-      <button id="dClaimBtn">Claim reward (winner)</button>
+      <button class="mint" id="dClaimBtn">Claim reward (winner only)</button>
+      <button class="ghost" id="dReclaimBtn">Reclaim (creator, no winner)</button>
       <div class="msg" id="dMsg"></div>
     </div>
   </div>
 
   <div class="acts">
     <div class="act">
-      <h4>POST A BOUNTY</h4>
-      <div class="hint">Criteria are judged literally — be specific.</div>
+      <h4>POST A BOUNTY (LOCKS THE REWARD)</h4>
+      <div class="hint">The GEN you enter is sent with this call and held by the contract.</div>
       <label>Title</label>
       <input id="fTitle" placeholder="e.g. Build a GenLayer price oracle" />
       <label>Acceptance criteria</label>
-      <textarea id="fReqs" placeholder="e.g. Must fetch a live price from a public API, expose a view method, and include the deployed contract address. A placeholder page does NOT qualify."></textarea>
-      <label>Reward (GEN)</label>
-      <input id="fReward" type="number" min="1" placeholder="100" />
-      <div class="btnrow"><button class="solid" id="createBtn">Create bounty</button></div>
+      <textarea id="fReqs" placeholder="e.g. Must contain real GenLayer contract code. A placeholder page does NOT qualify."></textarea>
+      <label>Reward (GEN) — escrowed on creation</label>
+      <input id="fReward" type="number" min="0" step="0.01" placeholder="0.5" />
+      <div class="btnrow"><button class="solid" id="createBtn">Lock reward &amp; post bounty</button></div>
       <div class="msg" id="createMsg"></div>
     </div>
 
@@ -245,7 +235,7 @@
 
   <footer>
     <div id="footLinks"></div>
-    AgentBounty · Intelligent Contract on GenLayer · built for the agent economy
+    AgentBounty · escrowed rewards + LLM judging + winner-only payout · Intelligent Contract on GenLayer
   </footer>
 </div>
 
@@ -253,75 +243,58 @@
 import { createClient } from "https://esm.sh/genlayer-js@1.1.8";
 import { testnetBradbury } from "https://esm.sh/genlayer-js@1.1.8/chains";
 
-// ---- CONFIG -----------------------------------------------------------
-const ADDR = "0x885b214A23D5A8731b1a9d1e7eC186421883b1DE";
-const REPO = "https://github.com/chenlifang005/agentbounty";
+// ---- CONFIG ------------------------------------------------------------
+const ADDR = "0x125FCD0A234d2bD6586BCf997643dc5947407Cc2";
+const REPO = "https://github.com/chenlifang005/AgentBounty";
 const EXPLORER = "https://explorer-bradbury.genlayer.com/address/" + ADDR;
-// -----------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 const STATE = ["OPEN", "JUDGED", "AWARDED", "CANCELLED"];
 const $ = (id) => document.getElementById(id);
 const readClient = createClient({ chain: testnetBradbury });
-let writeClient = null;
+let writeClient = null, myAddr = null, selected = null;
 let bounties = [];
-let selected = null;
 
+const eth = (w) => (Number(w) / 1e18).toFixed(6);
 const short = (a) => (a && a.length > 14) ? a.slice(0, 7) + "…" + a.slice(-5) : a;
-
-function msg(el, text, kind = "info") { el.className = "msg show " + kind; el.textContent = text; }
-
-function badge(state) {
-  const n = Number(state);
-  return `<span class="badge s${n}">${STATE[n] ?? state}</span>`;
-}
+function msg(el, t, k = "info") { el.className = "msg show " + k; el.textContent = t; }
+function badge(s) { const n = Number(s); return `<span class="badge s${n}">${STATE[n] ?? s}</span>`; }
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 function renderBoard() {
   const b = $("board");
-  if (!bounties.length) {
-    b.innerHTML = `<div class="empty">No bounties on this contract yet — post the first one below.</div>`;
-    return;
-  }
+  if (!bounties.length) { b.innerHTML = `<div class="empty">No bounties yet — lock a reward and post the first one below.</div>`; return; }
   b.innerHTML = bounties.map((x) => `
     <div class="bcard ${selected === Number(x.id) ? "sel" : ""}" data-id="${x.id}">
-      <div class="row1">
-        <span class="id">#${x.id}</span>
-        ${badge(x.state)}
-      </div>
-      <h4>${escapeHtml(x.title)}</h4>
-      <div class="crit">${escapeHtml(x.requirements)}</div>
+      <div class="row1"><span class="id">#${x.id}</span>${badge(x.state)}</div>
+      <h4>${esc(x.title)}</h4>
+      <div class="crit">${esc(x.requirements)}</div>
       <div class="foot">
-        <div class="reward">${x.reward}<small>GEN</small></div>
-        <div class="subs">${x.submission_count} submission${Number(x.submission_count) === 1 ? "" : "s"}</div>
+        <div class="reward">${eth(x.reward)}<small>GEN</small></div>
+        <div class="subs">${x.submission_count} submission${Number(x.submission_count) === 1 ? "" : "s"}${x.paid ? "<br>paid ✓" : ""}</div>
       </div>
     </div>`).join("");
-  b.querySelectorAll(".bcard").forEach((c) =>
-    c.addEventListener("click", () => openBounty(Number(c.dataset.id))));
-}
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  b.querySelectorAll(".bcard").forEach((c) => c.addEventListener("click", () => openBounty(Number(c.dataset.id))));
 }
 
 function renderDetail(x) {
   selected = Number(x.id);
   $("detail").classList.add("show");
   $("dTitle").textContent = `#${x.id} · ${x.title}`;
-  $("dReward").innerHTML = `${x.reward}<small>GEN</small>`;
-  $("dState").innerHTML = badge(x.state) + `<div style="margin-top:6px">${x.submission_count} submission(s)</div>`;
+  $("dReward").innerHTML = `${eth(x.reward)}<small>GEN</small>`;
+  $("dState").innerHTML = badge(x.state) + `<div style="margin-top:6px">${x.paid ? "paid out" : "reward locked"}</div>`;
   $("dMeta").innerHTML =
-    `creator <b>${short(x.creator)}</b> · ${STATE[Number(x.state)]}` +
-    (Number(x.winner_index) > 0 ? `<br />winner <b>${short(x.winner)}</b>` : "");
+    `creator <b>${short(x.creator)}</b>` +
+    (Number(x.winner_index) > 0 ? `<br />winner <b>${short(x.winner)}</b>` : "") +
+    `<br />contract holds <b>${eth(x.contract_balance)} GEN</b>`;
   $("dCrit").textContent = x.requirements;
 
   const subs = x.submissions || [];
   $("dSubs").innerHTML = subs.length ? subs.map((s) => `
     <div class="sub ${Number(x.winner_index) === s.index ? "win" : ""}">
-      <div class="hd">
-        <span class="n">#${s.index} · ${short(s.hunter)}${Number(x.winner_index) === s.index ? " · WINNER" : ""}</span>
-      </div>
-      <div style="color:var(--mut);font-size:12.5px;margin-bottom:4px">${escapeHtml(s.description)}</div>
-      <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>
+      <div class="hd"><span class="n">#${s.index} · ${short(s.hunter)}${Number(x.winner_index) === s.index ? " · WINNER" : ""}</span></div>
+      <div style="color:var(--mut);font-size:12.5px;margin-bottom:4px">${esc(s.description)}</div>
+      <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>
     </div>`).join("") : `<div class="empty">No submissions yet.</div>`;
 
   if (Number(x.state) >= 1) {
@@ -329,12 +302,14 @@ function renderDetail(x) {
     $("dVerdict").innerHTML = `
       <div class="verdict ${none ? "none" : ""}">
         <div class="t">${none ? "JURY VERDICT · NO SUBMISSION QUALIFIED" : "JURY VERDICT · SUBMISSION #" + x.winner_index + " WINS"}</div>
-        <p>${escapeHtml(x.verdict_reason)}</p>
-        ${x.verdict_confidence ? `<div class="conf">confidence: ${escapeHtml(x.verdict_confidence)}</div>` : ""}
+        <p>${esc(x.verdict_reason)}</p>
+        ${x.verdict_confidence ? `<div class="conf">confidence: ${esc(x.verdict_confidence)}</div>` : ""}
       </div>`;
-  } else {
-    $("dVerdict").innerHTML = "";
-  }
+  } else { $("dVerdict").innerHTML = ""; }
+
+  const isWinner = myAddr && x.winner && x.winner.toLowerCase() === myAddr.toLowerCase();
+  $("dClaimBtn").disabled = !(isWinner && !x.paid && Number(x.winner_index) > 0);
+  $("dReclaimBtn").disabled = !(myAddr && x.creator && x.creator.toLowerCase() === myAddr.toLowerCase() && Number(x.winner_index) === 0 && Number(x.state) === 1 && !x.paid);
   renderBoard();
 }
 
@@ -343,25 +318,18 @@ async function loadBoard() {
     const count = Number(await readClient.readContract({ address: ADDR, functionName: "get_bounty_count", args: [] }));
     bounties = [];
     for (let i = 1; i <= count; i++) {
-      const b = await readClient.readContract({ address: ADDR, functionName: "get_bounty", args: [BigInt(i)] });
-      bounties.push(b);
+      bounties.push(await readClient.readContract({ address: ADDR, functionName: "get_bounty", args: [BigInt(i)] }));
     }
     renderBoard();
-
-    const pool = bounties.reduce((s, b) => s + Number(b.reward), 0);
-    const subs = bounties.reduce((s, b) => s + Number(b.submission_count), 0);
-    const aw = bounties.filter((b) => Number(b.state) === 2).length;
+    const held = await readClient.readContract({ address: ADDR, functionName: "get_contract_balance", args: [] });
+    $("statHeld").innerHTML = eth(held) + `<span class="u">GEN</span>`;
     $("statCount").textContent = count;
-    $("statPool").innerHTML = pool + `<span class="u">GEN</span>`;
-    $("statSubs").textContent = subs;
-    $("statAwarded").textContent = aw;
+    $("statSubs").textContent = bounties.reduce((s, b) => s + Number(b.submission_count), 0);
+    $("statPaid").textContent = bounties.filter((b) => b.paid).length;
     $("boardCount").textContent = `· ${count} live`;
-    if (selected) {
-      const again = bounties.find((b) => Number(b.id) === selected);
-      if (again) renderDetail(again);
-    }
+    if (selected) { const again = bounties.find((b) => Number(b.id) === selected); if (again) renderDetail(again); }
   } catch (e) {
-    $("board").innerHTML = `<div class="empty">Could not read the board: ${escapeHtml((e.message || e).toString().slice(0, 120))}</div>`;
+    $("board").innerHTML = `<div class="empty">Could not read the board: ${esc((e.message || e).toString().slice(0, 120))}</div>`;
   }
 }
 
@@ -370,21 +338,16 @@ async function openBounty(id) {
     const b = await readClient.readContract({ address: ADDR, functionName: "get_bounty", args: [BigInt(id)] });
     renderDetail(b);
     $("detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  } catch (e) {
-    $("dTitle").textContent = "Read failed";
-    $("detail").classList.add("show");
-    $("dCrit").textContent = (e.message || e).toString().slice(0, 200);
-  }
+  } catch (e) { msg($("dMsg"), "Read failed: " + (e.message || e).toString().slice(0, 160), "err"); }
 }
 
-// ---------- wallet ----------
 $("connectBtn").addEventListener("click", async () => {
-  if (!window.ethereum) return msg($("createMsg"), "No wallet detected — install MetaMask to write.", "err");
+  if (!window.ethereum) return msg($("createMsg"), "No wallet detected — install MetaMask.", "err");
   try {
-    const accts = await window.ethereum.request({ method: "eth_requestAccounts" });
-    try {
-      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x107d" }] });
-    } catch (_) {
+    const a = await window.ethereum.request({ method: "eth_requestAccounts" });
+    myAddr = a[0];
+    try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x107d" }] }); }
+    catch {
       await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
         chainId: "0x107d", chainName: "GenLayer Bradbury Testnet",
         nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
@@ -393,44 +356,48 @@ $("connectBtn").addEventListener("click", async () => {
       }]});
     }
     writeClient = createClient({ chain: testnetBradbury, account: window.ethereum });
-    $("netLabel").textContent = short(accts[0]);
+    $("netLabel").textContent = short(myAddr);
     $("netDot").classList.add("on");
     $("connectBtn").textContent = "Connected";
-    $("connectBtn").classList.remove("solid");
+    msg($("createMsg"), "Wallet connected.", "ok");
+    if (selected) openBounty(selected);
   } catch (e) { msg($("createMsg"), "Connect failed: " + e.message, "err"); }
 });
 
-async function write(fn, args, el, label, after) {
+async function write(fn, args, el, label, value = 0n) {
   if (!writeClient) return msg(el, "Connect your wallet first.", "err");
   try {
     msg(el, `${label} → submitting…`, "info");
-    const hash = await writeClient.writeContract({ address: ADDR, functionName: fn, args });
+    const hash = await writeClient.writeContract({ address: ADDR, functionName: fn, args, value });
     msg(el, `${label} sent: ${hash}`, "ok");
-    if (after) setTimeout(after, 12000);
+    setTimeout(loadBoard, 15000);
   } catch (e) { msg(el, `${label} failed: ` + (e.message || e).toString().slice(0, 200), "err"); }
 }
 
-// ---------- actions ----------
 $("createBtn").addEventListener("click", () => {
-  const t = $("fTitle").value.trim(), r = $("fReqs").value.trim(), w = $("fReward").value;
-  if (!t || !r || !w) return msg($("createMsg"), "Fill in title, criteria and reward.", "err");
-  write("create_bounty", [t, r, BigInt(w)], $("createMsg"), "create_bounty", loadBoard);
+  const t = $("fTitle").value.trim(), r = $("fReqs").value.trim(), g = $("fReward").value;
+  if (!t || !r || !g) return msg($("createMsg"), "Fill in title, criteria and reward.", "err");
+  const wei = BigInt(Math.round(parseFloat(g) * 1e6)) * 1000000000000n;
+  write("create_bounty", [t, r], $("createMsg"), `create_bounty (locking ${g} GEN)`, wei);
 });
 
 $("subBtn").addEventListener("click", () => {
   const i = $("fSubId").value, u = $("fSubUrl").value.trim(), d = $("fSubDesc").value.trim();
   if (!i || !u || !d) return msg($("subMsg"), "Fill in bounty #, URL and description.", "err");
-  write("submit_work", [BigInt(i), u, d], $("subMsg"), "submit_work", loadBoard);
+  write("submit_work", [BigInt(i), u, d], $("subMsg"), "submit_work");
 });
 
 $("dJudgeBtn").addEventListener("click", () => {
   if (!selected) return msg($("dMsg"), "Open a bounty first.", "err");
-  write("judge_bounty", [BigInt(selected)], $("dMsg"), "judge_bounty (LLM fetches deliverables + consensus)", loadBoard);
+  write("judge_bounty", [BigInt(selected)], $("dMsg"), "judge_bounty (LLM fetches deliverables)");
 });
-
 $("dClaimBtn").addEventListener("click", () => {
   if (!selected) return msg($("dMsg"), "Open a bounty first.", "err");
-  write("claim_reward", [BigInt(selected)], $("dMsg"), "claim_reward", loadBoard);
+  write("claim_reward", [BigInt(selected)], $("dMsg"), "claim_reward (winner-only payout)");
+});
+$("dReclaimBtn").addEventListener("click", () => {
+  if (!selected) return msg($("dMsg"), "Open a bounty first.", "err");
+  write("reclaim_no_winner", [BigInt(selected)], $("dMsg"), "reclaim_no_winner (refund to creator)");
 });
 
 $("reloadBtn").addEventListener("click", loadBoard);
@@ -439,7 +406,6 @@ $("jumpBtn").addEventListener("click", () => { const v = $("jumpId").value; if (
 $("footLinks").innerHTML =
   `contract <a href="${EXPLORER}" target="_blank" rel="noopener">${ADDR}</a> · ` +
   `<a href="${REPO}" target="_blank" rel="noopener">source</a><br />`;
-
 loadBoard();
 </script>
 </body>
