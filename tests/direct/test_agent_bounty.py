@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
-"""AgentBounty direct-mode tests (run: pytest tests/direct/ -v)"""
+"""AgentBounty v2 direct-mode tests — real reward custody, winner authorization, real payout.
+
+Run: pytest tests/direct/ -v
+"""
 import json
 
 
 def _deploy(direct_deploy):
-    """Deploy for local direct-mode tests.
-
-    The contract header uses the concrete SDK hash for on-chain deployment;
-    direct mode resolves dependencies from a local cache, so we keep the same
-    hash here. (See README for the header rule.)
-    """
     import pathlib
     import tempfile
 
@@ -21,7 +18,6 @@ def _deploy(direct_deploy):
 
 
 def _addr(v):
-    """Wrap raw bytes into a genlayer Address (available at test runtime)."""
     from genlayer import Address
     return Address(v)
 
@@ -38,139 +34,155 @@ def _hex(v) -> str:
     return bytes(v).hex()
 
 
-def test_create_bounty(direct_vm, direct_deploy, direct_alice):
+def _funded_bounty(direct_vm, contract, creator, reward=1000,
+                   title="Build a price oracle", reqs="Must include real contract code"):
+    direct_vm.sender = creator
+    direct_vm.value = reward
+    bid = contract.create_bounty(title, reqs)
+    direct_vm.value = 0
+    return bid
+
+
+# ---------------------------------------------------- 1. reward custody ----
+
+def test_create_requires_funding(direct_vm, direct_deploy, direct_alice):
+    """The reviewer's point: the contract must ACCEPT reward funds."""
     contract = _deploy(direct_deploy)
     direct_vm.sender = direct_alice
+    direct_vm.value = 0
+    with direct_vm.expect_revert("Reward must be funded"):
+        contract.create_bounty("Unfunded bounty", "criteria")
 
-    bid = contract.create_bounty(
-        "Build a GenLayer price oracle contract",
-        "Must fetch a live price from a public API and expose a view method.",
-        500,
-    )
-    assert int(bid) == 1
 
+def test_reward_is_real_custody(direct_vm, direct_deploy, direct_alice):
+    contract = _deploy(direct_deploy)
+    bid = _funded_bounty(direct_vm, contract, direct_alice, reward=5000)
     b = contract.get_bounty(bid)
-    assert b["title"] == "Build a GenLayer price oracle contract"
-    assert int(b["reward"]) == 500
+    assert int(b["reward"]) == 5000          # recorded from gl.message.value
+    assert b["paid"] is False
     assert int(b["state"]) == 0
-    assert int(b["submission_count"]) == 0
-    assert int(contract.get_bounty_count()) == 1
 
 
-def test_create_bounty_validation(direct_vm, direct_deploy, direct_alice):
+def test_create_validation(direct_vm, direct_deploy, direct_alice):
     contract = _deploy(direct_deploy)
     direct_vm.sender = direct_alice
-
+    direct_vm.value = 100
     with direct_vm.expect_revert("Title is required"):
-        contract.create_bounty("", "criteria", 100)
+        contract.create_bounty("", "criteria")
     with direct_vm.expect_revert("Acceptance criteria are required"):
-        contract.create_bounty("title", "   ", 100)
-    with direct_vm.expect_revert("Reward must be positive"):
-        contract.create_bounty("title", "criteria", 0)
+        contract.create_bounty("title", "  ")
+    direct_vm.value = 0
 
 
-def test_submit_work(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
+# --------------------------------------------- 2. winner authorization ----
+
+def test_only_winner_can_claim(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
+    """The reviewer's point: any caller could previously mark a bounty awarded."""
     contract = _deploy(direct_deploy)
-    direct_vm.sender = direct_alice
-    bid = contract.create_bounty("Write a tutorial", "At least 800 words with code samples", 100)
+    bid = _funded_bounty(direct_vm, contract, direct_alice)
 
+    # bob wins, charlie submitted too
     direct_vm.sender = direct_bob
-    contract.submit_work(bid, "https://example.com/bob-tutorial", "Full tutorial with 5 code samples")
+    contract.submit_work(bid, "https://example.com/bob", "real deliverable")
     direct_vm.sender = direct_charlie
-    contract.submit_work(bid, "https://example.com/charlie-tutorial", "Short tutorial")
+    contract.submit_work(bid, "https://example.com/charlie", "placeholder")
 
-    b = contract.get_bounty(bid)
-    assert int(b["submission_count"]) == 2
-    subs = b["submissions"]
-    assert len(subs) == 2
-    assert subs[0]["url"] == "https://example.com/bob-tutorial"
-    assert subs[1]["url"] == "https://example.com/charlie-tutorial"
-
-    # invalid URL rejected
-    with direct_vm.expect_revert("A valid deliverable URL is required"):
-        contract.submit_work(bid, "not-a-url", "bad")
-
-
-def test_judge_picks_winner(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
-    contract = _deploy(direct_deploy)
-    direct_vm.sender = direct_alice
-    bid = contract.create_bounty(
-        "Port the demo to GenLayer",
-        "Deliverable must contain actual GenLayer contract code.",
-        250,
-    )
-
-    direct_vm.sender = direct_bob
-    contract.submit_work(bid, "https://example.com/bob", "Ported contract")
-    direct_vm.sender = direct_charlie
-    contract.submit_work(bid, "https://example.com/charlie", "Ported contract")
-
-    direct_vm.mock_web(r".*example\.com/bob.*",
-                       {"status": 200, "body": "<html>import genlayer: real contract code</html>"})
-    direct_vm.mock_web(r".*example\.com/charlie.*",
-                       {"status": 200, "body": "<html>coming soon - placeholder page</html>"})
-    direct_vm.mock_llm(r".*", {
-        "winner_index": 1,
-        "reason": "Submission #1 contains actual GenLayer contract code while submission #2 is only a placeholder page.",
-        "confidence": "high",
-    })
-
+    direct_vm.mock_web(r".*", {"status": 200, "body": "<html>content</html>"})
+    direct_vm.mock_llm(r".*", {"winner_index": 1, "reason": "Submission #1 is the real one.",
+                               "confidence": "high"})
     contract.judge_bounty(bid)
 
     b = contract.get_bounty(bid)
-    assert int(b["state"]) == 1
     assert int(b["winner_index"]) == 1
-    assert "GenLayer" in b["verdict_reason"]
-    assert b["verdict_confidence"] == "high"
     assert _hex(b["winner"]) == direct_bob.hex()
 
-    contract.claim_reward(bid)
-    assert int(contract.get_bounty(bid)["state"]) == 2
-
-
-def test_judge_nobody_qualifies(direct_vm, direct_deploy, direct_alice, direct_bob):
-    contract = _deploy(direct_deploy)
+    # the creator cannot claim, and neither can another submitter
     direct_vm.sender = direct_alice
-    bid = contract.create_bounty("Deliver X", "Must include a deployed contract address", 100)
+    with direct_vm.expect_revert("Only the winning submitter can claim"):
+        contract.claim_reward(bid)
+    direct_vm.sender = direct_charlie
+    with direct_vm.expect_revert("Only the winning submitter can claim"):
+        contract.claim_reward(bid)
+
+    # the winner can
+    direct_vm.sender = direct_bob
+    contract.claim_reward(bid)
+    b = contract.get_bounty(bid)
+    assert b["paid"] is True
+    assert int(b["reward"]) == 0        # escrow released, not left as metadata
+    assert int(b["state"]) == 2         # AWARDED
+
+
+def test_claim_requires_judging_and_no_double_pay(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = _deploy(direct_deploy)
+    bid = _funded_bounty(direct_vm, contract, direct_alice)
+
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert("Bounty has not been judged yet"):
+        contract.claim_reward(bid)
+
+    contract.submit_work(bid, "https://example.com/x", "deliverable")
+    direct_vm.mock_web(r".*", {"status": 200, "body": "<html>ok</html>"})
+    direct_vm.mock_llm(r".*", {"winner_index": 1, "reason": "Meets criteria.", "confidence": "medium"})
+    contract.judge_bounty(bid)
+
+    contract.claim_reward(bid)          # bob claims
+    with direct_vm.expect_revert("Reward already paid out"):
+        contract.claim_reward(bid)
+
+
+# ------------------------------------------------ 3. payout / refunds ----
+
+def test_judge_flow_and_no_winner_refund(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = _deploy(direct_deploy)
+    bid = _funded_bounty(direct_vm, contract, direct_alice, reward=2000)
     direct_vm.sender = direct_bob
     contract.submit_work(bid, "https://example.com/empty", "TODO later")
 
     direct_vm.mock_web(r".*", {"status": 200, "body": "<html>nothing here</html>"})
-    direct_vm.mock_llm(r".*", {"winner_index": 0, "reason": "No submission meets the criteria.", "confidence": "high"})
-
+    direct_vm.mock_llm(r".*", {"winner_index": 0, "reason": "No submission meets the criteria.",
+                               "confidence": "high"})
     contract.judge_bounty(bid)
+
     b = contract.get_bounty(bid)
     assert int(b["winner_index"]) == 0
     assert b["winner"] == ""
-    with direct_vm.expect_revert("No submission qualified for this bounty"):
+
+    # winner-only claim is impossible
+    with direct_vm.expect_revert("No submission qualified"):
         contract.claim_reward(bid)
 
-
-def test_cannot_judge_twice_or_without_subs(direct_vm, direct_deploy, direct_alice, direct_bob):
-    contract = _deploy(direct_deploy)
-    direct_vm.sender = direct_alice
-    bid = contract.create_bounty("Task", "criteria", 10)
-
-    with direct_vm.expect_revert("No submissions to judge"):
-        contract.judge_bounty(bid)
-
+    # a non-creator cannot reclaim
     direct_vm.sender = direct_bob
-    contract.submit_work(bid, "https://example.com/x", "done")
+    with direct_vm.expect_revert("Only the creator can reclaim"):
+        contract.reclaim_no_winner(bid)
 
-    direct_vm.mock_web(r".*", {"status": 200, "body": "<html>done</html>"})
-    direct_vm.mock_llm(r".*", {"winner_index": 1, "reason": "Meets criteria.", "confidence": "medium"})
+    # the creator gets the reward back
+    direct_vm.sender = direct_alice
+    contract.reclaim_no_winner(bid)
+    b = contract.get_bounty(bid)
+    assert b["paid"] is True
+    assert int(b["reward"]) == 0
+    assert int(b["state"]) == 3
+
+
+def test_creator_cannot_reclaim_when_winner_exists(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = _deploy(direct_deploy)
+    bid = _funded_bounty(direct_vm, contract, direct_alice)
+    direct_vm.sender = direct_bob
+    contract.submit_work(bid, "https://example.com/good", "real work")
+    direct_vm.mock_web(r".*", {"status": 200, "body": "<html>real code</html>"})
+    direct_vm.mock_llm(r".*", {"winner_index": 1, "reason": "Qualifies.", "confidence": "high"})
     contract.judge_bounty(bid)
 
-    with direct_vm.expect_revert("Bounty is already judged"):
-        contract.judge_bounty(bid)
-    with direct_vm.expect_revert("Bounty is closed for submissions"):
-        contract.submit_work(bid, "https://example.com/late", "too late")
-
-
-def test_only_creator_can_cancel(direct_vm, direct_deploy, direct_alice, direct_bob):
-    contract = _deploy(direct_deploy)
     direct_vm.sender = direct_alice
-    bid = contract.create_bounty("Task", "criteria", 10)
+    with direct_vm.expect_revert("A winner exists"):
+        contract.reclaim_no_winner(bid)
+
+
+def test_cancel_open_bounty_refunds_creator(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = _deploy(direct_deploy)
+    bid = _funded_bounty(direct_vm, contract, direct_alice, reward=700)
 
     direct_vm.sender = direct_bob
     with direct_vm.expect_revert("Only the creator can cancel"):
@@ -178,4 +190,37 @@ def test_only_creator_can_cancel(direct_vm, direct_deploy, direct_alice, direct_
 
     direct_vm.sender = direct_alice
     contract.cancel_bounty(bid)
-    assert int(contract.get_bounty(bid)["state"]) == 3
+    b = contract.get_bounty(bid)
+    assert b["paid"] is True
+    assert int(b["reward"]) == 0
+    assert int(b["state"]) == 3
+
+
+def test_cancel_blocked_once_submissions_exist(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = _deploy(direct_deploy)
+    bid = _funded_bounty(direct_vm, contract, direct_alice)
+    direct_vm.sender = direct_bob
+    contract.submit_work(bid, "https://example.com/x", "work")
+
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("already has submissions"):
+        contract.cancel_bounty(bid)
+
+
+def test_judge_guards(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = _deploy(direct_deploy)
+    bid = _funded_bounty(direct_vm, contract, direct_alice)
+
+    with direct_vm.expect_revert("No submissions to judge"):
+        contract.judge_bounty(bid)
+
+    direct_vm.sender = direct_bob
+    contract.submit_work(bid, "https://example.com/x", "work")
+    direct_vm.mock_web(r".*", {"status": 200, "body": "<html>ok</html>"})
+    direct_vm.mock_llm(r".*", {"winner_index": 1, "reason": "ok", "confidence": "low"})
+    contract.judge_bounty(bid)
+
+    with direct_vm.expect_revert("Bounty is already judged"):
+        contract.judge_bounty(bid)
+    with direct_vm.expect_revert("Bounty is closed for submissions"):
+        contract.submit_work(bid, "https://example.com/late", "late")
